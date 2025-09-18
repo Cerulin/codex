@@ -1,0 +1,17 @@
+# Minimal runtime image that installs a prebuilt codex binary globally
+
+FROM debian:bookworm-slim
+
+# Name of the binary in the build context (defaults to codex-linux-amd64)
+ARG BINARY=codex-linux-amd64
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates libssl3 && rm -rf /var/lib/apt/lists/*
+
+# Install globally
+COPY ${BINARY} /usr/local/bin/codex
+RUN chmod +x /usr/local/bin/codex
+
+WORKDIR /work
+ENTRYPOINT ["codex"]
+

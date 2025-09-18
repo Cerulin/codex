@@ -42,6 +42,10 @@ struct MultitoolCli {
 
     #[clap(subcommand)]
     subcommand: Option<Subcommand>,
+
+    /// Global headless mode for commands that can open a browser (e.g., login)
+    #[arg(long = "headless", global = true, default_value_t = false)]
+    headless: bool,
 }
 
 #[derive(Debug, clap::Subcommand)]
@@ -123,6 +127,10 @@ struct LoginCommand {
     #[arg(long = "api-key", value_name = "API_KEY")]
     api_key: Option<String>,
 
+    /// Do not open a browser; print the URL and accept pasted callback URL/code
+    #[arg(long = "headless", default_value_t = false)]
+    headless: bool,
+
     #[command(subcommand)]
     action: Option<LoginSubcommand>,
 }
@@ -162,6 +170,7 @@ async fn cli_main(codex_linux_sandbox_exe: Option<PathBuf>) -> anyhow::Result<()
         config_overrides: root_config_overrides,
         mut interactive,
         subcommand,
+        headless: root_headless,
     } = MultitoolCli::parse();
 
     match subcommand {
@@ -211,10 +220,28 @@ async fn cli_main(codex_linux_sandbox_exe: Option<PathBuf>) -> anyhow::Result<()
                     run_login_status(login_cli.config_overrides).await;
                 }
                 None => {
-                    if let Some(api_key) = login_cli.api_key {
-                        run_login_with_api_key(login_cli.config_overrides, api_key).await;
+                    let effective_headless = login_cli.headless || root_headless;
+                    let login_result = if let Some(api_key) = login_cli.api_key {
+                        run_login_with_api_key(login_cli.config_overrides, api_key).await
                     } else {
-                        run_login_with_chatgpt(login_cli.config_overrides).await;
+                        run_login_with_chatgpt(login_cli.config_overrides, effective_headless).await
+                    };
+
+                    // If login failed, bubble up the error and exit with non-zero.
+                    login_result?;
+
+                    // On success, start the interactive app resuming the last session.
+                    interactive.resume_picker = false;
+                    interactive.resume_last = true;
+                    interactive.resume_session_id = None;
+
+                    prepend_config_flags(
+                        &mut interactive.config_overrides,
+                        root_config_overrides.clone(),
+                    );
+                    let usage = codex_tui::run_main(interactive, codex_linux_sandbox_exe).await?;
+                    if !usage.is_zero() {
+                        println!("{}", codex_core::protocol::FinalOutput::from(usage));
                     }
                 }
             }

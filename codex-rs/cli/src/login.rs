@@ -7,14 +7,16 @@ use codex_core::config::Config;
 use codex_core::config::ConfigOverrides;
 use codex_login::ServerOptions;
 use codex_login::run_login_server;
-use std::io::{self, Write};
-use std::net::TcpStream;
 use codex_protocol::mcp_protocol::AuthMode;
+use std::io::Write;
+use std::io::{self};
+use std::net::TcpStream;
 use std::path::PathBuf;
 
-pub async fn login_with_chatgpt(codex_home: PathBuf, originator: String) -> std::io::Result<()> {
+pub async fn login_with_chatgpt(codex_home: PathBuf, headless: bool) -> std::io::Result<()> {
     // 1) Start the server first (unchanged)
-    let opts = ServerOptions::new(codex_home, CLIENT_ID.to_string(), originator);
+    let mut opts = ServerOptions::new(codex_home, CLIENT_ID.to_string());
+    opts.open_browser = !headless;
     let server = run_login_server(opts)?;
 
     eprintln!(
@@ -69,15 +71,16 @@ If your browser did not open, use ANY browser to visit:\n\n{}\n",
                 urlencoding::encode(&code),
                 urlencoding::encode(&state)
             );
-            let req = format!(
-                "GET {} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
-                path
-            );
-            let mut stream =
-                TcpStream::connect(("127.0.0.1", server.actual_port))?;
+            let req =
+                format!("GET {path} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n");
+            let mut stream = TcpStream::connect(("127.0.0.1", server.actual_port))?;
             use std::io::Write as _;
             stream.write_all(req.as_bytes())?;
-            // ignore response body; the server will finish login and exit
+            // Follow up with /success so the server can exit without a browser following the redirect.
+            let mut success = TcpStream::connect(("127.0.0.1", server.actual_port))?;
+            success.write_all(
+                b"GET /success HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
+            )?;
         }
     }
 
@@ -85,17 +88,20 @@ If your browser did not open, use ANY browser to visit:\n\n{}\n",
     server.block_until_done().await
 }
 
-pub async fn run_login_with_chatgpt(cli_config_overrides: CliConfigOverrides) -> ! {
+pub async fn run_login_with_chatgpt(
+    cli_config_overrides: CliConfigOverrides,
+    headless: bool,
+) -> anyhow::Result<()> {
     let config = load_config_or_exit(cli_config_overrides);
 
-    match login_with_chatgpt(config.codex_home).await {
+    match login_with_chatgpt(config.codex_home, headless).await {
         Ok(_) => {
             eprintln!("Successfully logged in");
-            std::process::exit(0);
+            Ok(())
         }
         Err(e) => {
             eprintln!("Error logging in: {e}");
-            std::process::exit(1);
+            Err(e.into())
         }
     }
 }
@@ -103,17 +109,17 @@ pub async fn run_login_with_chatgpt(cli_config_overrides: CliConfigOverrides) ->
 pub async fn run_login_with_api_key(
     cli_config_overrides: CliConfigOverrides,
     api_key: String,
-) -> ! {
+) -> anyhow::Result<()> {
     let config = load_config_or_exit(cli_config_overrides);
 
     match login_with_api_key(&config.codex_home, &api_key) {
         Ok(_) => {
             eprintln!("Successfully logged in");
-            std::process::exit(0);
+            Ok(())
         }
         Err(e) => {
             eprintln!("Error logging in: {e}");
-            std::process::exit(1);
+            Err(e.into())
         }
     }
 }

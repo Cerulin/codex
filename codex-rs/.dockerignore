@@ -1,0 +1,21 @@
+# Keep Docker build context small and stable
+
+# Rust build artifacts
+target/
+**/target/
+
+# VCS
+.git/
+**/.git/
+
+# Local build outputs
+dist/
+**/dist/
+
+# Large archives not needed for build
+*.tgz
+*.tar.gz
+*.zip
+*.gz
+
+

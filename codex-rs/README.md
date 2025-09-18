@@ -13,6 +13,8 @@ codex
 
 You can also download a platform-specific release directly from our [GitHub Releases](https://github.com/openai/codex/releases).
 
+For Linux packaging and installation via Docker, see `INSTALLATION.md` in this directory.
+
 ## What's new in the Rust CLI
 
 While we are [working to close the gap between the TypeScript and Rust implementations of Codex CLI](https://github.com/openai/codex/issues/1262), note that the Rust CLI has a number of features that the TypeScript CLI does not!
